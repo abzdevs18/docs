@@ -3,6 +3,24 @@
 ## Overview
 The chat service is a real-time messaging system built with Socket.IO, Redis, and Bull queues. It supports high concurrency with features like message persistence and real-time delivery.
 
+## Authentication
+To connect to the WebSocket server, clients must provide authentication credentials in the Socket.IO connection options:
+
+```typescript
+const socket = io('ws://localhost:3003/chat/', {
+  auth: {
+    token: 'Bearer YOUR_JWT_TOKEN', // JWT token with the same format as API requests
+    userId: 'YOUR_USER_ID'         // Must match the user ID in the JWT token
+  }
+});
+```
+
+The server will reject connections that:
+- Are missing the token or userId
+- Have an invalid token format (must start with 'Bearer ')
+- Have an invalid or expired JWT token
+- Have a userId that doesn't match the one in the JWT token
+
 ## Architecture
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
