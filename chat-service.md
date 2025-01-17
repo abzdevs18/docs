@@ -234,7 +234,92 @@ socket.on('chat:message', (message) => {
 });
 ```
 
-Note: Direct chat rooms are automatically created when you first initiate a chat with another user. The room ID is generated based on both users' IDs to ensure a unique, consistent room for their conversations.
+### Retrieving Direct Messages and Rooms
+
+#### WebSocket Events
+When connecting, the server automatically sends all your rooms (including direct message rooms) through the `chat:init_data` event:
+
+```javascript
+socket.on('chat:init_data', (data) => {
+  const { rooms } = data;
+  
+  // Filter direct message rooms
+  const directRooms = rooms.filter(room => room.type === 'DIRECT');
+  console.log('Direct message rooms:', directRooms);
+});
+```
+
+#### REST API Endpoints
+
+1. Get all rooms (including direct messages):
+```
+GET /api/v2/chat/rooms
+
+Headers:
+- Authorization: Bearer <token>
+- x-tenant-tag: <tenant>  // If using multi-tenancy
+
+Response:
+{
+    "rooms": Array<{
+        "id": string,
+        "name": string,
+        "type": "GROUP" | "DIRECT",  // Check type === "DIRECT" for DMs
+        "lastMessage": {
+            "content": string,
+            "timestamp": string,
+            "sender": {
+                "id": string,
+                "name": string
+            }
+        } | null,
+        "participants": Array<{
+            "id": string,
+            "name": string,
+            "avatar": string | null
+        }>
+    }>
+}
+```
+
+2. Get messages from a specific direct message room:
+```
+GET /api/v2/chat/messages?roomId=<room_id>&type=direct
+
+Headers:
+- Authorization: Bearer <token>
+- x-tenant-tag: <tenant>  // If using multi-tenancy
+
+Query Parameters:
+- roomId: string (required) - The ID of the direct message room
+- type: "direct" (optional) - Specify to only get direct messages
+- before: string (timestamp, optional) - For pagination
+- limit: number (optional, default: 50)
+
+Response:
+{
+    "messages": Array<{
+        "id": string,
+        "content": string,
+        "sender": {
+            "id": string,
+            "name": string
+        },
+        "timestamp": string,
+        "type": "TEXT" | "SYSTEM" | "FILE",
+        "reactions": Array<{
+            "emoji": string,
+            "users": Array<{
+                "id": string,
+                "name": string
+            }>
+        }>
+    }>,
+    "hasMore": boolean
+}
+```
+
+Note: Direct message rooms are automatically created when you first initiate a chat with another user. The room ID is generated based on both users' IDs to ensure a unique, consistent room for their conversations.
 
 ## Error Handling
 The server emits errors through the 'chat:error' event:
