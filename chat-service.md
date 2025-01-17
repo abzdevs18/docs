@@ -364,3 +364,177 @@ interface Favorite {
   lastMessage?: string;
 }
 ``` 
+
+## Communication Methods
+
+The chat service uses two methods of communication:
+
+1. **WebSocket (Socket.IO)** - For real-time features
+   - Live messaging
+   - Typing indicators
+   - Presence updates
+   - Real-time notifications
+   - Message delivery status
+
+2. **REST API** - For CRUD operations
+   - Room management
+   - Message history
+   - Reactions
+   - User management
+
+### REST API Endpoints
+
+All REST endpoints are prefixed with `/api/v2/chat/`
+
+#### Rooms
+```
+POST /api/v2/chat/rooms
+Create a new chat room
+
+Request:
+{
+    "name": string,
+    "participants": string[]  // Array of user IDs
+}
+
+Headers:
+- Content-Type: application/json
+- Authorization: Bearer <token>
+- x-tenant-tag: <tenant>  // If using multi-tenancy
+
+Response:
+{
+    "id": string,
+    "name": string,
+    "type": "GROUP" | "DIRECT",
+    "participants": Array<{
+        "user": {
+            "id": string,
+            "name": string,
+            "avatar": string | null
+        },
+        "role": string,
+        "joinedAt": string
+    }>
+}
+```
+
+```
+GET /api/v2/chat/rooms
+List all rooms for the current user
+
+Headers:
+- Authorization: Bearer <token>
+- x-tenant-tag: <tenant>  // If using multi-tenancy
+
+Response:
+{
+    "rooms": Array<{
+        "id": string,
+        "name": string,
+        "type": "GROUP" | "DIRECT",
+        "lastMessage": {
+            "content": string,
+            "timestamp": string,
+            "sender": {
+                "id": string,
+                "name": string
+            }
+        } | null
+    }>
+}
+```
+
+#### Messages
+```
+GET /api/v2/chat/messages?roomId=<room_id>
+Get message history for a room
+
+Headers:
+- Authorization: Bearer <token>
+- x-tenant-tag: <tenant>  // If using multi-tenancy
+
+Query Parameters:
+- roomId: string (required)
+- before: string (timestamp, optional)
+- limit: number (optional, default: 50)
+
+Response:
+{
+    "messages": Array<{
+        "id": string,
+        "content": string,
+        "sender": {
+            "id": string,
+            "name": string
+        },
+        "timestamp": string,
+        "type": "TEXT" | "SYSTEM" | "FILE",
+        "reactions": Array<{
+            "emoji": string,
+            "users": Array<{
+                "id": string,
+                "name": string
+            }>
+        }>
+    }>
+}
+```
+
+#### Reactions
+```
+POST /api/v2/chat/reactions
+Add a reaction to a message
+
+Request:
+{
+    "messageId": string,
+    "emoji": string
+}
+
+Headers:
+- Content-Type: application/json
+- Authorization: Bearer <token>
+- x-tenant-tag: <tenant>  // If using multi-tenancy
+
+Response:
+{
+    "id": string,
+    "emoji": string,
+    "messageId": string,
+    "userId": string
+}
+```
+
+```
+DELETE /api/v2/chat/reactions/:reactionId
+Remove a reaction from a message
+
+Headers:
+- Authorization: Bearer <token>
+- x-tenant-tag: <tenant>  // If using multi-tenancy
+
+Response:
+{
+    "success": true
+}
+```
+
+### Error Handling
+
+REST API errors follow this format:
+```json
+{
+    "error": string,
+    "details": string | null,
+    "code": number
+}
+```
+
+Common error codes:
+- 400: Bad Request (invalid input)
+- 401: Unauthorized (missing or invalid token)
+- 403: Forbidden (CORS error or insufficient permissions)
+- 404: Not Found
+- 500: Internal Server Error
+``` 
