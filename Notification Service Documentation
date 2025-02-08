@@ -1,0 +1,267 @@
+# Notification Service Documentation
+
+## Overview
+The notification service is a real-time notification system built with Socket.IO, Redis, and Bull queues. It supports various notification types, display methods, and prioritization with features like scheduled notifications and real-time delivery.
+
+## Authentication
+To connect to the WebSocket server, clients must provide authentication credentials in the Socket.IO connection options:
+
+```typescript
+const socket = io('ws://localhost:3002/notifications/', {
+  auth: {
+    token: 'Bearer YOUR_JWT_TOKEN', // JWT token with the same format as API requests
+    userId: 'YOUR_USER_ID'         // Must match the user ID in the JWT token
+  }
+});
+```
+
+The server will reject connections that:
+- Are missing the token or userId
+- Have an invalid token format (must start with 'Bearer ')
+- Have an invalid or expired JWT token
+- Have a userId that doesn't match the one in the JWT token
+
+## Architecture
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Client    │◄────┤  Socket.IO  │◄────┤Redis Adapter│
+└─────────────┘     └─────────────┘     └─────────────┘
+       ▲                   ▲                   ▲
+       │                   │                   │
+       │          ┌──────────────────┐  ┌─────────────┐
+       └──────────┤Notification      │◄─┤    Bull     │
+                  │Service           │  │   Queue     │
+                  └──────────────────┘  └─────────────┘
+                           ▲
+                     ┌─────────────┐
+                     │   Prisma    │
+                     └─────────────┘
+```
+
+## Server Configuration
+- Default Port: 3002
+- WebSocket Path: `/notifications/`
+- Transport: WebSocket (optimized for performance)
+- Authentication: JWT-based
+
+## Notification Types and Features
+
+### Notification Types
+```typescript
+enum NotificationType {
+  INFO = 'INFO',
+  WARNING = 'WARNING',
+  ALERT = 'ALERT',
+  SUCCESS = 'SUCCESS'
+}
+```
+
+### Display Types
+```typescript
+enum DisplayType {
+  MODAL = 'MODAL',
+  TOAST = 'TOAST',
+  DRAWER = 'DRAWER',
+  ACTION_CARD = 'ACTION_CARD'
+}
+```
+
+### Priority Levels
+```typescript
+enum NotificationPriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH'
+}
+```
+
+### Action Types
+```typescript
+enum ActionType {
+  LINK = 'LINK',
+  DOWNLOAD = 'DOWNLOAD',
+  FORM = 'FORM',
+  FEEDBACK = 'FEEDBACK'
+}
+```
+
+## Currently Implemented Features
+1. Real-time Notifications
+   - Instant delivery via WebSocket
+   - Persistent storage in database
+   - Read receipts
+   - Notification expiration (TTL)
+
+2. Notification Management
+   - Scheduled notifications
+   - Batch processing
+   - Priority-based delivery
+   - Target user/group specific notifications
+
+3. Action Support
+   - Interactive notification actions
+   - Multiple action types (Link, Download, Form, Feedback)
+   - Action tracking
+
+4. Performance Features
+   - WebSocket-only transport
+   - Message queuing with Bull
+   - Redis caching
+   - Rate limiting
+   - Batch processing
+
+5. Security
+   - JWT-based authentication
+   - Per-user notification scoping
+   - Input validation
+   - Secure WebSocket configuration
+
+## Events
+
+### Client to Server Events
+```typescript
+interface ClientToServerEvents {
+  'notification:read': (data: { messageId: string }) => void;
+  'notification:displayed': (data: { messageId: string }) => void;
+  'notification:action': (data: { 
+    messageId: string;
+    actionId: string;
+    response?: any;
+  }) => void;
+}
+```
+
+### Server to Client Events
+```typescript
+interface ServerToClientEvents {
+  'notification:new': (notification: Notification) => void;
+  'notification:update': (data: { 
+    id: string;
+    updates: Partial<Notification>;
+  }) => void;
+  'notification:error': (error: { message: string }) => void;
+}
+```
+
+## REST API Endpoints
+
+### Send Test Notification
+```http
+POST /api/notifications/test
+Content-Type: application/json
+Authorization: Bearer YOUR_JWT_TOKEN
+
+{
+  "targetUsers": ["user_id"],
+  "message": "Test notification message",
+  "type": "INFO",
+  "displayType": "TOAST"
+}
+```
+
+### Get Recent Notifications
+```http
+GET /api/notifications/recent/:userId
+Authorization: Bearer YOUR_JWT_TOKEN
+```
+
+## Usage Examples
+
+### Connecting to the Notification Server
+```javascript
+const socket = io('ws://localhost:3002/notifications/', {
+  transports: ['websocket'],
+  auth: {
+    token: 'Bearer your_jwt_token',
+    userId: 'user_id'
+  }
+});
+```
+
+### Listening for New Notifications
+```javascript
+socket.on('notification:new', (notification) => {
+  // Handle new notification
+  console.log('New notification:', notification);
+});
+```
+
+### Marking a Notification as Read
+```javascript
+socket.emit('notification:read', {
+  messageId: 'notification_id'
+});
+```
+
+### Handling Notification Actions
+```javascript
+socket.on('notification:new', (notification) => {
+  if (notification.actions?.length > 0) {
+    // Handle notification with actions
+    notification.actions.forEach(action => {
+      switch (action.action) {
+        case 'LINK':
+          // Handle link action
+          break;
+        case 'DOWNLOAD':
+          // Handle download action
+          break;
+        case 'FORM':
+          // Handle form action
+          break;
+        case 'FEEDBACK':
+          // Handle feedback action
+          break;
+      }
+    });
+  }
+});
+```
+
+### Sending a Notification (Server-side)
+```typescript
+await notificationService.sendNotification(
+  ['user_id'], // target users
+  {
+    message: "Your application has been approved",
+    type: "SUCCESS",
+    displayType: "TOAST",
+    targetType: "specific-student",
+    metadata: {
+      importance: NotificationPriority.HIGH,
+      category: "application",
+      acknowledgementRequired: true
+    },
+    actions: [
+      {
+        label: "View Details",
+        action: "LINK",
+        url: "/applications/details/123"
+      }
+    ]
+  }
+);
+```
+
+### Scheduling a Notification (Server-side)
+```typescript
+await notificationService.scheduleNotification({
+  title: "Scheduled Notification",
+  message: "This is a scheduled notification",
+  type: "INFO",
+  displayType: "TOAST",
+  category: "reminder",
+  targetType: "specific-student",
+  targetUsers: ['user_id'],
+  schedule: {
+    sendAt: "2024-03-01T10:00:00Z"
+  },
+  actions: [
+    {
+      label: "View",
+      action: "LINK",
+      url: "/some-url"
+    }
+  ]
+});
+``` 
