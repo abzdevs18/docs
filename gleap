@@ -1,0 +1,431 @@
+/**
+ * Gleap initialization script
+ * 
+ * This script initializes Gleap chat bot and configures delivery management tools
+ */
+(function() {
+    if (typeof gleapConfig === 'undefined') return;
+
+    // API interaction functions
+    const api = {
+        // Create a new delivery request
+        createDelivery: function(origin, destination, items) {
+            if (!origin || !destination) {
+                return Promise.reject(new Error("Origin and destination are required"));
+            }
+            
+            // Get headers from gleapConfig if available
+            const headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            };
+            
+            // Add authentication headers if available
+            if (gleapConfig.headers) {
+                Object.assign(headers, gleapConfig.headers);
+            }
+            
+            // Create delivery data in the format expected by the API
+            const deliveryData = {
+                name: `Delivery Request: ${origin} to ${destination}`,
+                data: {
+                    action: "create_delivery",
+                    origin: origin,
+                    destination: destination,
+                    items: items || "General package",
+                    user_id: gleapConfig.user?.id,
+                    status: "pending",
+                    created_at: new Date().toISOString(),
+                    estimated_arrival: new Date(Date.now() + 86400000 * 2).toISOString(),
+                    price: Math.floor(Math.random() * 100) + 30
+                }
+            };
+            
+            return fetch("https://api.restful-api.dev/objects", {
+                method: "POST",
+                headers: headers,
+                body: JSON.stringify(deliveryData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Create delivery response:", data);
+                window.Gleap?.attachCustomData?.({createResponse: data});
+                return data;
+            });
+        },
+
+        // Cancel a delivery request
+        cancelDelivery: function(deliveryId) {
+            if (!deliveryId) {
+                return Promise.reject(new Error("Delivery ID is required"));
+            }
+            
+            // Get headers from gleapConfig if available
+            const headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json"
+            };
+            
+            // Add authentication headers if available
+            if (gleapConfig.headers) {
+                Object.assign(headers, gleapConfig.headers);
+            }
+            
+            // Create form data for cancellation request
+            const formData = new URLSearchParams();
+            formData.append('listing_id', deliveryId);
+            
+            return fetch("https://ship.test:81/cancellations/request", {
+                method: "POST",
+                headers: headers,
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Cancel delivery response:", data);
+                window.Gleap?.attachCustomData?.({cancelResponse: data});
+                return data;
+            });
+        },
+
+        // Get delivery details
+        getDelivery: function(deliveryId) {
+            if (!deliveryId) {
+                return Promise.reject(new Error("Delivery ID is required"));
+            }
+            
+            // Get headers from gleapConfig if available
+            const headers = {
+                "Accept": "application/json"
+            };
+            
+            // Add authentication headers if available
+            if (gleapConfig.headers) {
+                Object.assign(headers, gleapConfig.headers);
+            }
+            
+            // We'll use the all objects endpoint and filter for our delivery
+            return fetch("https://api.restful-api.dev/objects", {
+                method: "GET",
+                headers: headers
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Simulate retrieving a specific delivery by transforming one of the existing objects
+                // In a real implementation, you'd filter the data for the specific delivery
+                let delivery = data.find(item => item.id === deliveryId);
+                
+                // If not found, use the first item but modify it to look like our delivery
+                if (!delivery && data.length > 0) {
+                    const randomItem = data[0];
+                    delivery = {
+                        id: deliveryId,
+                        name: `Delivery #${deliveryId}`,
+                        data: {
+                            origin: "123 Main St, City A",
+                            destination: "456 Oak St, City B",
+                            status: "in_transit",
+                            price: 49.99,
+                            estimated_arrival: new Date(Date.now() + 86400000).toISOString()
+                        },
+                        _original_item: randomItem.name
+                    };
+                }
+                
+                console.log("Delivery details:", delivery);
+                window.Gleap?.attachCustomData?.({deliveryDetails: delivery});
+                return delivery;
+            });
+        }
+    };
+
+    // AI Tools configuration
+    const aiTools = {
+        // Define available AI Tools
+        definitions: [
+            {
+                name: 'create-delivery',
+                description: 'Create a new delivery request by providing origin, destination and optional items description. Use this when the user wants to create a delivery.',
+                response: 'The delivery has been created successfully.',
+                executionType: 'button',
+                parameters: [
+                    {
+                        name: 'origin',
+                        description: 'The pickup address or location for the delivery.',
+                        type: 'string',
+                        required: true
+                    },
+                    {
+                        name: 'destination',
+                        description: 'The delivery address or destination location.',
+                        type: 'string',
+                        required: true
+                    },
+                    {
+                        name: 'items',
+                        description: 'Description of the items to be delivered.',
+                        type: 'string',
+                        required: false
+                    }
+                ]
+            },
+            {
+                name: 'cancel-delivery',
+                description: 'Cancel a delivery request by providing the delivery ID. Use this when the user wants to cancel a delivery.',
+                response: 'The delivery has been cancelled successfully.',
+                executionType: 'button',
+                parameters: [
+                    {
+                        name: 'deliveryId',
+                        description: 'The ID of the delivery to cancel.',
+                        type: 'string',
+                        required: true
+                    }
+                ]
+            },
+            {
+                name: 'get-delivery',
+                description: 'Get details of a specific delivery by providing the delivery ID. Use this when the user wants to see delivery information.',
+                response: 'Here are the delivery details.',
+                executionType: 'button',
+                parameters: [
+                    {
+                        name: 'deliveryId',
+                        description: 'The ID of the delivery to retrieve.',
+                        type: 'string',
+                        required: true
+                    }
+                ]
+            }
+        ],
+
+        // Register AI tools with Gleap
+        register: function() {
+            if (!window.Gleap) return;
+            
+            window.Gleap.setAiTools(this.definitions);
+            console.log("AI tools registered with Gleap");
+        },
+
+        // Handle tool execution
+        handleExecution: function(tool) {
+            if (!tool || !tool.name) return;
+            
+            console.log("Tool execution:", tool.name, tool.params);
+            
+            if (tool.name === "create-delivery") {
+                // Create a delivery with the provided parameters
+                api.createDelivery(tool.params.origin, tool.params.destination, tool.params.items)
+                    .then(data => {
+                        window.Gleap.sendSilentMessage({
+                            message: "✅ Delivery created successfully:\n```json\n" + JSON.stringify(data, null, 2) + "\n```",
+                            sender: "Bot"
+                        });
+                    })
+                    .catch(error => {
+                        window.Gleap.sendSilentMessage({
+                            message: "❌ Failed to create delivery: " + error.message,
+                            sender: "Bot"
+                        });
+                    });
+            } else if (tool.name === "cancel-delivery") {
+                // Cancel a delivery with the provided ID
+                api.cancelDelivery(tool.params.deliveryId)
+                    .then(data => {
+                        window.Gleap.sendSilentMessage({
+                            message: "✅ Delivery cancelled successfully:\n```json\n" + JSON.stringify(data, null, 2) + "\n```",
+                            sender: "Bot"
+                        });
+                    })
+                    .catch(error => {
+                        window.Gleap.sendSilentMessage({
+                            message: "❌ Failed to cancel delivery: " + error.message,
+                            sender: "Bot"
+                        });
+                    });
+            } else if (tool.name === "get-delivery") {
+                api.getDelivery(tool.params.deliveryId)
+                    .then(data => {
+                        window.Gleap.sendSilentMessage({
+                            message: "✅ Delivery details:\n```json\n" + JSON.stringify(data, null, 2) + "\n```",
+                            sender: "Bot"
+                        });
+                    })
+                    .catch(error => {
+                        window.Gleap.sendSilentMessage({
+                            message: "❌ Failed to get delivery details: " + error.message,
+                            sender: "Bot"
+                        });
+                    });
+            }
+        }
+    };
+
+    // Custom actions for the UI
+    const customActions = {
+        register: function() {
+            if (!window.Gleap) return;
+            
+            // Create delivery action
+            window.Gleap.registerCustomAction({
+                name: "createDelivery",
+                title: "Create Delivery",
+                iconClass: "fa fa-truck",
+                action: function() {
+                    const origin = prompt("Enter pickup location:");
+                    if (!origin) return;
+                    
+                    const destination = prompt("Enter delivery destination:");
+                    if (!destination) return;
+                    
+                    const items = prompt("Enter items description (optional):");
+                    
+                    api.createDelivery(origin, destination, items)
+                        .then(data => {
+                            window.Gleap.sendSilentMessage({
+                                message: "Delivery Created Successfully:\n" + JSON.stringify(data, null, 2),
+                                sender: "System"
+                            });
+                        })
+                        .catch(error => {
+                            window.Gleap.sendSilentMessage({
+                                message: "Failed to Create Delivery: " + error.message,
+                                sender: "System"
+                            });
+                        });
+                }
+            });
+            
+            // Cancel delivery action
+            window.Gleap.registerCustomAction({
+                name: "cancelDelivery",
+                title: "Cancel Delivery",
+                iconClass: "fa fa-times-circle",
+                action: function() {
+                    const deliveryId = prompt("Enter Delivery ID to cancel:");
+                    if (!deliveryId) return;
+                    
+                    api.cancelDelivery(deliveryId)
+                        .then(data => {
+                            window.Gleap.sendSilentMessage({
+                                message: "Delivery Cancelled Successfully:\n" + JSON.stringify(data, null, 2),
+                                sender: "System"
+                            });
+                        })
+                        .catch(error => {
+                            window.Gleap.sendSilentMessage({
+                                message: "Failed to Cancel Delivery: " + error.message,
+                                sender: "System"
+                            });
+                        });
+                }
+            });
+            
+            // Get delivery details action
+            window.Gleap.registerCustomAction({
+                name: "getDelivery",
+                title: "Get Delivery",
+                iconClass: "fa fa-info-circle",
+                action: function() {
+                    const deliveryId = prompt("Enter Delivery ID:");
+                    if (!deliveryId) return;
+                    
+                    api.getDelivery(deliveryId)
+                        .then(data => {
+                            window.Gleap.sendSilentMessage({
+                                message: "Delivery Details:\n" + JSON.stringify(data, null, 2),
+                                sender: "System"
+                            });
+                        })
+                        .catch(error => {
+                            window.Gleap.sendSilentMessage({
+                                message: "Failed to get delivery details: " + error.message,
+                                sender: "System"
+                            });
+                        });
+                }
+            });
+        }
+    };
+
+    // Initialize Gleap with the provided installation code
+    !function(Gleap,t,i){if(!(Gleap=window.Gleap=window.Gleap||[]).invoked){for(window.GleapActions=[],Gleap.invoked=!0,Gleap.methods=["identify","setEnvironment","setTags","attachCustomData","setCustomData","removeCustomData","clearCustomData","registerCustomAction","trackEvent","setUseCookies","log","preFillForm","showSurvey","sendSilentCrashReport","startFeedbackFlow","startBot","setAppBuildNumber","setAppVersionCode","setApiUrl","setFrameUrl","isOpened","open","close","on","setLanguage","setOfflineMode","startClassicForm","initialize","disableConsoleLogOverwrite","logEvent","hide","enableShortcuts","showFeedbackButton","destroy","getIdentity","isUserIdentified","clearIdentity","openConversations","openConversation","openHelpCenterCollection","openHelpCenterArticle","openHelpCenter","searchHelpCenter","openNewsArticle","openChecklists","startChecklist","openNews","openFeatureRequests","isLiveMode"],Gleap.f=function(e){return function(){var t=Array.prototype.slice.call(arguments);window.GleapActions.push({e:e,a:t})}},t=0;t<Gleap.methods.length;t++)Gleap[i=Gleap.methods[t]]=Gleap.f(i);Gleap.load=function(){var t=document.getElementsByTagName("head")[0],i=document.createElement("script");i.type="text/javascript",i.async=!0,i.src="https://sdk.gleap.io/latest/index.js",t.appendChild(i)},Gleap.load(),
+    Gleap.initialize(gleapConfig.api_key)
+    }}();
+    
+    // Main initialization function
+    function initializeGleap() {
+        if (!window.Gleap) {
+            setTimeout(initializeGleap, 100);
+            return;
+        }
+        
+        // Configure API settings
+        if (gleapConfig.api_url) {
+            window.Gleap.setApiUrl(gleapConfig.api_url);
+        }
+
+        // Initialize user identity if available
+        if (gleapConfig.user) {
+            window.Gleap.identify(
+                gleapConfig.user.id, 
+                {
+                    name: gleapConfig.user.name || '',
+                    email: gleapConfig.user.email || '',
+                    userType: gleapConfig.user.isTp ? 'Transport Provider' : 'User'
+                }
+            );
+            
+            // Attach custom API headers for authenticated requests
+            if (gleapConfig.headers) {
+                window.Gleap.attachCustomData({apiHeaders: gleapConfig.headers});
+            }
+        }
+        
+        // Start the Gleap bot
+        window.Gleap.startBot();
+        
+        // Register AI tools and custom actions
+        aiTools.register();
+        customActions.register();
+        
+        // Setup event handlers
+        window.Gleap.on("tool-execution", function(tool) {
+            aiTools.handleExecution(tool);
+        });
+        
+        window.Gleap.on("widget-opened", function() {
+            setTimeout(function() {
+                window.Gleap.sendSilentMessage({
+                    message: "👋 Hello! I can help you manage deliveries. Try asking me to:\n\n" +
+                             "1️⃣ **Create a delivery** - Example: \"I need to send a package from New York to Boston\"\n\n" +
+                             "2️⃣ **Cancel a delivery** - Example: \"I need to cancel delivery #1234\"\n\n" +
+                             "3️⃣ **Get delivery details** - Example: \"Show me details for delivery #5678\"\n\n" +
+                             "Just follow the prompts to provide the necessary information.",
+                    sender: "Bot"
+                });
+                
+                // Re-register AI tools to ensure they're available
+                aiTools.register();
+            }, 1000);
+        });
+    }
+    
+    // Start initialization after a short delay
+    setTimeout(initializeGleap, 500);
+})(); 
